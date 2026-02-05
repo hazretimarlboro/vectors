@@ -19,11 +19,13 @@ typedef struct
 } vector;
 
 vector* createVector(void);
-int     push_back(vector* vec, const char* str);
+int     push_back (vector* vec, const char* str);
 int     push_front(vector* vec, const char* str);
-char*   at(vector* v, size_t index);
-int     pop_front(vector* oldV);
-int     pop_back(vector* oldV);
-void    destroy(vector* v);
+char*   at        (vector* v, size_t index);
+int     pop_front (vector* oldV);
+int     pop_back  (vector* oldV);
+void    destroy   (vector* v);
+char**  begin     (vector* v);
+char**  end       (vector* v);
 
 #endif
