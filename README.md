@@ -1,89 +1,126 @@
-# Vector (String Vector for C)
+# Generic Thread-Safe Vector API in C
 
-A simple dynamic array (“vector”) implementation in C for storing **heap-allocated strings (`char*`)**.
-
-This project is intended as a **learning-focused, minimal container library**, demonstrating:
-
-* dynamic memory management
-* capacity growth strategies
-* ownership rules
-* clean C APIs
+A lightweight, **generic, thread-safe vector implementation** in C, designed for storing any data type with dynamic resizing, safe access, and optional reverse and iteration utilities. Ideal for multithreaded applications or high-performance code.
 
 ---
 
 ## Features
 
-* Dynamic resizing (capacity doubles when full)
-* Push and pop from both front and back
-* Safe string storage (strings are **deep-copied**)
-* Explicit error handling via return codes
-* Clean separation between header and implementation
+* **Generic**: works with any data type using `void*` and `elementSize`.
+* **Thread-safe**: uses `pthread_mutex_t` internally to prevent race conditions.
+* **Dynamic resizing**: automatically expands capacity when pushing elements.
+* **Flexible operations**:
+
+  * `push_back`, `push_front`
+  * `pop_back`, `pop_front`
+  * `reverse`
+  * `at`, `begin`, `end` accessors
+* **Safe destruction**: frees all memory and destroys internal locks.
+* **Lightweight and readable**: minimal dependencies (POSIX threads only).
 
 ---
 
-## Data Structure
+## Installation
+
+Include the header and source in your project:
 
 ```c
-typedef struct {
-    size_t ObjectCount;  // number of stored strings
-    char** Data;         // array of string pointers
-    size_t capacity;     // allocated capacity
-} vector;
+#include "vector.h"
+```
+
+Compile with `-lpthread` to link pthreads:
+
+```bash
+gcc main.c vector.c -lpthread -o my_program
 ```
 
 ---
 
-## Ownership Rules (IMPORTANT)
+## API Reference
 
-* `push_back` / `push_front` **copy** the input string
-  → the caller retains ownership of the original string
-* The vector **owns all stored strings**
-* `destroy()` must be called to free:
-
-  * all stored strings
-  * the internal array
-  * the vector itself
-* `at()` returns a pointer to internal storage
-  → **do not free it**
-
----
-
-## Public API
-
-### Creation / Destruction
+### Vector Creation
 
 ```c
-vector* createVector(void);
-void destroy(vector* v);
+vector* Vector(size_t elementSize);
 ```
+
+* Allocates and returns a new vector for elements of size `elementSize`.
+* Returns `NULL` on allocation failure.
 
 ---
 
-### Modification
+### Adding Elements
 
 ```c
-int push_back(vector* vec, const char* str);
-int push_front(vector* vec, const char* str);
-int pop_back(vector* vec);
-int pop_front(vector* vec);
+int vector_push_back(vector* v, const void* element);
+int vector_push_front(vector* v, const void* element);
 ```
+
+* Adds an element to the end or front of the vector.
+* Automatically resizes if necessary.
+* Returns an `errors` enum value:
+
+  * `Okay` – success
+  * `Empty` – vector pointer is NULL
+  * `NoArgument` – element pointer is NULL
+  * `AllocationError` – memory allocation failed
 
 ---
 
-### Access
+### Removing Elements
 
 ```c
-char* at(vector* v, size_t index);
+int vector_pop_back(vector* v);
+int vector_pop_front(vector* v);
 ```
 
-Returns `NULL` if:
+* Removes the last or first element.
+* Returns an `errors` enum value:
 
-* `v` is `NULL`
-* `index` is out of bounds
+  * `Okay` – success
+  * `Empty` – vector pointer is NULL
+  * `NoData` – vector is empty
 
 ---
 
-## Error Codes
+### Accessing Elements
+
+```c
+void* vector_at(vector* v, size_t index);
+void* vector_begin(vector* v);
+void* vector_end(vector* v);
+```
+
+* `vector_at`: returns a pointer to the element at `index`.
+* `vector_begin`: pointer to the first element.
+* `vector_end`: pointer one past the last element.
+* ⚠️ **Note**: These pointers are valid only until the vector is modified by other threads.
+
+---
+
+### Reverse
+
+```c
+int vector_reverse(vector* v);
+```
+
+* Reverses the vector in-place.
+* Returns `Okay` or `AllocationError` if internal memory allocation fails.
+
+---
+
+### Destruction
+
+```c
+void vector_destroy(vector* v);
+```
+
+* Frees all memory associated with the vector and destroys internal mutex locks.
+* After this call, the vector pointer becomes invalid.
+
+---
+
+### Error Codes
 
 ```c
 typedef enum {
@@ -95,78 +132,53 @@ typedef enum {
 } errors;
 ```
 
-| Error             | Meaning                                   |
-| ----------------- | ----------------------------------------- |
-| `Okay`            | Operation successful                      |
-| `AllocationError` | Memory allocation failed                  |
-| `NoData`          | Operation requires data, but vector empty |
-| `Empty`           | Invalid or empty vector                   |
-| `NoArgument`      | Required argument was `NULL`              |
+Use these to handle errors gracefully.
 
 ---
 
-## Example Usage
+## Usage Example
 
 ```c
-#include "vector.h"
 #include <stdio.h>
+#include "vector.h"
 
-int main(void) {
-    vector* v = createVector();
-
-    push_back(v, "hello");
-    push_front(v, "world");
-
-    for (size_t i = 0; i < v->ObjectCount; i++) {
-        printf("%s\n", at(v, i));
+void print_ints(vector* v) {
+    int* data = (int*)vector_begin(v);
+    for(size_t i = 0; i < v->ObjectCount; i++) {
+        printf("%d ", data[i]);
     }
+    printf("\n");
+}
 
-    pop_back(v);
-    pop_front(v);
+int main() {
+    vector* v = Vector(sizeof(int));
+    int a = 10, b = 20, c = 30;
 
-    destroy(v);
+    vector_push_back(v, &a);
+    vector_push_back(v, &b);
+    vector_push_front(v, &c);
+
+    print_ints(v); // Output: 30 10 20
+
+    vector_reverse(v);
+    print_ints(v); // Output: 20 10 30
+
+    vector_destroy(v);
     return 0;
 }
 ```
 
 ---
 
-## Complexity Notes
+## Notes
 
-| Operation    | Time Complexity |
-| ------------ | --------------- |
-| `push_back`  | Amortized O(1)  |
-| `pop_back`   | O(1)            |
-| `push_front` | O(n)            |
-| `pop_front`  | O(n)            |
-| `at`         | O(1)            |
-
-Front operations are linear due to element shifting.
+* Thread-safety is **built-in**, but returning raw pointers (via `at`, `begin`, `end`) **can become invalid** if another thread modifies the vector.
+* For safe multithreaded iteration, copy elements into a temporary buffer or lock the vector during the iteration.
 
 ---
 
-## Limitations
+## License
 
-* Stores **strings only** (`char*`)
-* Not thread-safe
-* No iterator abstraction
-* No shrink-to-fit
-* Not a generic container
-
-These are **intentional trade-offs** for clarity and learning value.
-
----
-
-## Build Notes
-
-This library uses only the C standard library.
-
-Compile example:
-
-```sh
-gcc -Wall -Wextra -pedantic -std=c11 vector.c main.c -o example
-```
-
-Tested with `valgrind` (no leaks under correct usage).
+MIT License – free to use, modify, and distribute.
 
 ---

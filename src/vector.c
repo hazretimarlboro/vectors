@@ -4,164 +4,194 @@
 #include <string.h>
 
 // --------------------------------------
+// Create a new empty vector
+// --------------------------------------
+vector* Vector(size_t elemsize)
+{
+    vector* vec = malloc(sizeof(vector));
+    if(!vec) return NULL;
+
+    vec->Data = malloc(4 * elemsize);
+    if(!vec->Data) { free(vec); return NULL; }
+
+    vec->ObjectCount = 0;
+    vec->capacity = 4;
+    vec->elementSize = elemsize;
+
+    pthread_mutex_init(&vec->lock, NULL);
+    return vec;
+}
+
+
+// --------------------------------------
 // Access element at a specific index
 // --------------------------------------
-char* at(vector* v, size_t index)
+void* vector_at(vector*v, size_t index)
 {
-    if(!v) return NULL;                   // check for NULL vector
-    if(index >= v->ObjectCount) return NULL; // check index bounds
-    return v->Data[index];                // return pointer to string
+    void* res = NULL;
+    if(!v || !v->Data) return NULL;
+    pthread_mutex_lock(&v->lock);
+    if(index >= v->ObjectCount) return NULL;
+    
+    res = (char*)v->Data + index * v->elementSize;
+
+    pthread_mutex_unlock(&v->lock);
+    return res;
 }
 
 // --------------------------------------
 // Return pointer to the first element
 // --------------------------------------
-char** begin(vector* v)
+void* vector_begin(vector* v)
 {
-    if(!v) return NULL;                   // check for NULL vector
+    if(!v) return NULL;
+
+    pthread_mutex_lock(&v->lock);
+    void* result = NULL;
     
-    return v->Data;                       // return pointer to first element
+
+    if(v->Data && v->ObjectCount > 0)
+        result = v->Data;
+
+    pthread_mutex_unlock(&v->lock);
+    return result;
 }
 
 // --------------------------------------
 // Return pointer to one past the last element
 // --------------------------------------
-char** end(vector* v)
+void* vector_end(vector* v)
 {
-    if(!v || !v->Data) return NULL;       // check for NULL vector or empty data
+    if(!v) return NULL;
+    pthread_mutex_lock(&v->lock);
+    void* result = NULL;
+    
 
-    return v->Data + v->ObjectCount;      // pointer arithmetic: points one past last element
-}
+    if(v->Data)
+        result = (char*)v->Data + v->ObjectCount * v->elementSize;
 
-// --------------------------------------
-// Create a new empty vector
-// --------------------------------------
-vector* createVector(void)
-{
-    size_t ObjectCount = 0;               // initialize object count
-    char** Data = NULL;                    // initialize data pointer to NULL
-
-    vector* vec = (vector*)malloc(sizeof(vector)); // allocate vector struct
-    if(!vec) return NULL;                  // check allocation
-
-    vec->Data = Data;                      // set initial data pointer
-    vec->ObjectCount = ObjectCount;        // set initial object count
-    vec->capacity = 0;                     // capacity is zero initially
-
-    return vec;                            // return the new vector
+    pthread_mutex_unlock(&v->lock);
+    return result;
 }
 
 // --------------------------------------
 // Destroy vector and free all memory
 // --------------------------------------
-void destroy(vector* v)
+void vector_destroy(vector* v)
 {
-    if (!v) return;                        // check for NULL
-
-    // free each string individually
-    for (size_t i = 0; i < v->ObjectCount; i++)
-        free(v->Data[i]);
-
-    // clear all pointers in the array (optional safety)
-    for (char** it = begin(v); it != end(v); it++)
-    {
-        free(*it);                         // free again? careful: redundant if already freed
-        *it = NULL;                         // nullify pointer
-    }
-
-    free(v->Data);                          // free the array of pointers
-    free(v);                                // free the struct itself
+    if(!v) return;
+    pthread_mutex_destroy(&v->lock);
+    free(v->Data);
+    free(v);
 }
 
 // --------------------------------------
 // Remove the first element
 // --------------------------------------
-int pop_front(vector* oldV)
+int vector_pop_front(vector* v)
 {
-    if(!oldV) return Empty;                // check for NULL
-    if(!((oldV)->Data) || (oldV)->ObjectCount == 0) return NoData; // empty vector
+    if(!v) return Empty;
+    pthread_mutex_lock(&v->lock);
+    if(!v->Data || v->ObjectCount == 0) return NoData;
 
-    free((oldV)->Data[0]);                 // free memory of first string
-    (oldV)->Data[0] = NULL;                // optional: set pointer to NULL
-
-    // shift all elements one position to the front
-    memmove(oldV->Data, oldV->Data + 1, (oldV)->ObjectCount - 1 * sizeof(char*));
-
-    (oldV)->Data[(oldV)->ObjectCount - 1] = NULL; // clear last pointer
-    (oldV)->ObjectCount--;                  // decrease count
-
-    return Okay;                             // operation successful
+    memmove((char*)v->Data, (char*)v->Data + v->elementSize * 1, (v->ObjectCount - 1) * v->elementSize);
+    v->ObjectCount--;
+    pthread_mutex_unlock(&v->lock);
+    return Okay;
 }
 
 // --------------------------------------
 // Remove the last element
 // --------------------------------------
-int pop_back(vector* oldV)
+int vector_pop_back(vector* v)
 {
-    if(!oldV) return Empty;                // check for NULL
-    if(!((oldV)->Data) || (oldV)->ObjectCount == 0) return NoData; // empty vector
+    if(!v) return Empty;
+    pthread_mutex_lock(&v->lock);
+    if(!v->Data || v->ObjectCount == 0) return NoData;
 
-    free((oldV)->Data[(oldV)->ObjectCount - 1]); // free last string
-    (oldV)->Data[(oldV)->ObjectCount - 1] = NULL; // nullify pointer
-    (oldV)->ObjectCount--;                  // decrease count
+    v->ObjectCount--;
 
-    return Okay;                             // operation successful
+    pthread_mutex_unlock(&v->lock);
+    return Okay;
 }
 
 // --------------------------------------
 // Add an element to the end
 // --------------------------------------
-int push_back(vector* vec, const char* str)
+int vector_push_back(vector* v, const void* element)
 {
-    if(!vec) return Empty;                  // check vector pointer
-    if(!str) return NoArgument;             // check string pointer
+    if(!v) return Empty;
+    pthread_mutex_lock(&v->lock);
+    if(!element) {pthread_mutex_unlock(&v->lock);return NoArgument;}
 
-    // If vector is full, increase capacity
-    if((vec)->ObjectCount == (vec)->capacity)
+    if(v->ObjectCount == v->capacity)
     {
-        size_t new_capacity = (vec)->capacity == 0 ? 4 : (vec)->capacity * 2; // double capacity or set to 4
-        char** tmp = realloc((vec)->Data, new_capacity * sizeof(char*));     // realloc array
-        if(!tmp) return AllocationError;     // check allocation
-        (vec)->Data = tmp;                   // update vector's data pointer
-        (vec)->capacity = new_capacity;      // update capacity
+        size_t newCap = v->capacity == 0 ? 4 : v->capacity *2;
+        void* tmp = realloc(v->Data, newCap * v->elementSize);
+        if(!tmp) return AllocationError;
+        v->Data = tmp;
+        v->capacity = newCap;
     }
 
-    // Allocate memory for new string and copy it
-    (vec)->Data[(vec)->ObjectCount] = malloc(strlen(str) + 1); // +1 for null terminator
-    if(!(vec)->Data[(vec)->ObjectCount]) return AllocationError; // check allocation
-    strcpy((vec)->Data[(vec)->ObjectCount], str);               // copy string
-    (vec)->ObjectCount++;                                        // increment count
-    return Okay;                                                 // success
+    memmove((char*)v->Data + v->ObjectCount * v->elementSize, element, v->elementSize);
+    v->ObjectCount++;
+    pthread_mutex_unlock(&v->lock);
+    return Okay;
 }
 
 // --------------------------------------
 // Add an element to the front
 // --------------------------------------
-int push_front(vector* vec, const char* str)
+int vector_push_front(vector* v, const void* element)
 {
-    if(!vec || !str) return Empty;          // check vector and string pointers
+    if(!v) return Empty;
+    pthread_mutex_lock(&v->lock);
+    if(!element) {pthread_mutex_unlock(&v->lock);return NoArgument;}
 
-    // If vector is full, increase capacity
-    if((vec)->ObjectCount == (vec)->capacity)
+    if(v->ObjectCount == v->capacity)
     {
-        size_t new_capacity = (vec)->capacity == 0 ? 4 : (vec)->capacity * 2; // double capacity or set to 4
-        char** tmp = realloc((vec)->Data, new_capacity * sizeof(char*));     // realloc array
-        if(!tmp) return AllocationError;     // check allocation
-        (vec)->Data = tmp;                   // update vector's data pointer
-        (vec)->capacity = new_capacity;      // update capacity
+        size_t newCap = v->capacity == 0 ? 4 : v->capacity * 2;
+        void* tmp = realloc(v->Data, newCap * v->elementSize);
+        if(!tmp) return AllocationError;
+        v->Data = tmp;
+        v->capacity = newCap;
     }
 
-    // Shift all elements one position back to make space at front
-    for (char** it = end(vec); it != begin(vec); it--)
+    memmove((char*)v->Data + v->elementSize, v->Data, v->ObjectCount * v->elementSize);
+    memcpy(v->Data, element, v->elementSize);
+
+    pthread_mutex_unlock(&v->lock);
+    v->ObjectCount++;
+    return Okay;
+}
+
+//--------------------------------------
+//Reverse a vector
+//--------------------------------------
+int vector_reverse(vector* v)
+{
+    if(!v) return Empty;
+    pthread_mutex_lock(&v->lock);
+    if(v->ObjectCount == 1) {pthread_mutex_unlock(&v->lock); return Okay;}  
+
+    size_t n = v->ObjectCount;
+    size_t sz = v->elementSize;
+
+
+    void* tmp = malloc(sz);
+    if(!tmp) {pthread_mutex_unlock(&v->lock); return AllocationError;}
+
+    for(size_t i = 0; i < n / 2; i++)
     {
-        *it = *(it - 1);                     // move element backwards
+        void* a = (char*)v->Data + i * sz;
+        void* b = (char*)v->Data + (n - i - 1) * sz;
+
+        memcpy(tmp, a, sz);
+        memcpy(a, b, sz);
+        memcpy(b, tmp, sz);
     }
 
-    // Allocate memory for new string and copy it
-    (vec)->Data[0] = malloc(strlen(str) + 1); // +1 for null terminator
-    if(!(vec)->Data[0]) return AllocationError; // check allocation
-    strcpy((vec)->Data[0], str);               // copy string
-    (vec)->ObjectCount++;                       // increment count
-
-    return Okay;                                // success
+    free(tmp);
+    pthread_mutex_unlock(&v->lock);
+    return Okay;
 }
