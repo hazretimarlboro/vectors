@@ -30,14 +30,15 @@ void* vector_at(vector*v, size_t index)
 {
     void* res = NULL;
     if(!v || !v->Data) return NULL;
-    pthread_mutex_lock(&v->lock);
-    if(index >= v->ObjectCount) return NULL;
-    
-    res = (char*)v->Data + index * v->elementSize;
 
+    pthread_mutex_lock(&v->lock);
+    if(index < v->ObjectCount)
+        res = (char*)v->Data + index * v->elementSize;
     pthread_mutex_unlock(&v->lock);
+
     return res;
 }
+
 
 // --------------------------------------
 // Return pointer to the first element
