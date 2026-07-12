@@ -1,6 +1,5 @@
 #ifndef VECTOR_H
 #define VECTOR_H
-#include <pthread.h>
 #include <stddef.h>
 
 typedef enum
@@ -12,13 +11,12 @@ typedef enum
     NoArgument
 } errors;
 
-typedef struct 
+typedef struct
 {
     void* Data;
     size_t ObjectCount;
     size_t capacity;
     size_t elementSize;
-    pthread_mutex_t lock;
 } vector;
 
 vector* Vector(size_t elemsize);
