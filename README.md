@@ -1,13 +1,12 @@
-# Generic Thread-Safe Vector API in C
+# Generic Vector API in C
 
-A lightweight, **generic, thread-safe vector implementation** in C, designed for storing any data type with dynamic resizing, safe access, and optional reverse and iteration utilities. Ideal for multithreaded applications or high-performance code.
+A lightweight, **generic, vector implementation** in C, designed for storing any data type with dynamic resizing, safe access, and optional reverse and iteration utilities.
 
 ---
 
 ## Features
 
 * **Generic**: works with any data type using `void*` and `elementSize`.
-* **Thread-safe**: uses `pthread_mutex_t` internally to prevent race conditions.
 * **Dynamic resizing**: automatically expands capacity when pushing elements.
 * **Flexible operations**:
 
@@ -28,10 +27,10 @@ Include the header and source in your project:
 #include "vector.h"
 ```
 
-Compile with `-lpthread` to link pthreads:
+Compile
 
 ```bash
-gcc main.c vector.c -lpthread -o my_program
+gcc main.c vector.c -o my_program
 ```
 
 ---
@@ -115,7 +114,7 @@ int vector_reverse(vector* v);
 void vector_destroy(vector* v);
 ```
 
-* Frees all memory associated with the vector and destroys internal mutex locks.
+* Frees all memory associated with the vector.
 * After this call, the vector pointer becomes invalid.
 
 ---
@@ -167,14 +166,6 @@ int main() {
     return 0;
 }
 ```
-
----
-
-## Notes
-
-* Thread-safety is **built-in**, but returning raw pointers (via `at`, `begin`, `end`) **can become invalid** if another thread modifies the vector.
-* For safe multithreaded iteration, copy elements into a temporary buffer or lock the vector during the iteration.
-
 ---
 
 ## License
